@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: cardroute
+      POSTGRES_DB: cardroute
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your shell}
+    volumes:
+      - cardroute_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cardroute -d cardroute"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://cardroute:${POSTGRES_PASSWORD}@db:5432/cardroute
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your shell}
+      APP_ENV: ${APP_ENV:-development}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8000}
+      PORT: 8000
+      CARD_TO_CARD_FEE_PERCENT: ${CARD_TO_CARD_FEE_PERCENT:-1.25}
+      CARD_TO_CARD_DEMO_LIMIT: ${CARD_TO_CARD_DEMO_LIMIT:-25000}
+      ROUTE_QUOTE_EXPIRY_SECONDS: ${ROUTE_QUOTE_EXPIRY_SECONDS:-300}
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  cardroute_data:

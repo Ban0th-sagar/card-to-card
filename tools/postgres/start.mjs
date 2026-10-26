@@ -1,0 +1,23 @@
+import EmbeddedPostgres from 'embedded-postgres';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const local=path.join(root,'.local');
+fs.mkdirSync(local,{recursive:true,mode:0o700});
+const configPath=path.join(local,'postgres.json');
+let config=fs.existsSync(configPath)?JSON.parse(fs.readFileSync(configPath,'utf8')):{password:crypto.randomBytes(32).toString('hex')};
+fs.writeFileSync(configPath,JSON.stringify(config),{mode:0o600});
+const pg=new EmbeddedPostgres({databaseDir:path.join(local,'postgres'),user:'cardroute',password:config.password,port:5432,persistent:true,authMethod:'scram-sha-256',postgresFlags:['-h','127.0.0.1'],onLog:()=>{},onError:console.error});
+if(!fs.existsSync(path.join(local,'postgres/PG_VERSION'))) await pg.initialise();
+await pg.start();
+const client=pg.getPgClient();await client.connect();
+for(const db of ['cardroute','cardroute_test']){const found=await client.query('SELECT 1 FROM pg_database WHERE datname=$1',[db]);if(!found.rowCount)await pg.createDatabase(db)}
+await client.end();
+const envPath=path.join(root,'.env');
+if(!fs.existsSync(envPath))fs.writeFileSync(envPath,`DATABASE_URL=postgresql+psycopg://cardroute:${config.password}@127.0.0.1:5432/cardroute\nJWT_SECRET=${crypto.randomBytes(48).toString('hex')}\nAPP_ENV=development\nFRONTEND_URL=http://localhost:5173\n`,{mode:0o600});
+process.on('SIGINT',async()=>{await pg.stop();process.exit(0)});
+process.on('SIGTERM',async()=>{await pg.stop();process.exit(0)});
+console.log('PostgreSQL ready on 127.0.0.1:5432; development and test databases available.');
+await new Promise(()=>{});
